@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Decentralized AI Factory Twin - Telemetry</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
+    <!-- Chart.js for real-time graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body {
+        background-color: #0b1120;
+        color: #f8fafc;
+        font-family: "Inter", "Segoe UI", sans-serif;
+      }
+      .tech-border {
+        border: 1px solid rgba(56, 189, 248, 0.2);
+        box-shadow: 0 0 15px rgba(14, 165, 233, 0.05) inset;
+      }
+      .fault-border {
+        border: 1px solid rgba(239, 68, 68, 0.5);
+        box-shadow: 0 0 20px rgba(239, 68, 68, 0.1) inset;
+      }
+      .grid-bg {
+        background-image:
+          linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
+    </style>
+  </head>
+  <body class="grid-bg min-h-screen">
+    <div class="max-w-[1400px] mx-auto p-6 flex flex-col h-screen">
+      <!-- Header: Command Center Style -->
+      <header
+        class="flex justify-between items-end mb-6 pb-4 border-b border-slate-800"
+      >
+        <div>
+          <div class="flex items-center gap-3 mb-1">
+            <i class="fa-solid fa-network-wired text-cyan-500 text-2xl"></i>
+            <h1
+              class="text-2xl font-bold tracking-widest text-slate-100 uppercase"
+            >
+              DecTwin-PPO Digital Twin
+            </h1>
+          </div>
+          <div class="text-xs text-cyan-500/70 font-mono tracking-widest">
+            DECENTRALIZED GRU ROUTING TOPOLOGY // SYSTEM: ONLINE
+          </div>
+        </div>
+
+        <div class="flex gap-8 items-end text-right">
+          <div>
+            <div class="text-[10px] text-slate-500 tracking-widest uppercase">
+              System Uptime (Steps)
+            </div>
+            <div id="step-counter" class="font-mono text-xl text-slate-300">
+              0000
+            </div>
+          </div>
+          <div>
+            <div class="text-[10px] text-slate-500 tracking-widest uppercase">
+              Global Throughput
+            </div>
+            <div class="font-mono text-xl text-cyan-400">
+              <span id="throughput-counter">0.0</span>
+              <span class="text-xs text-slate-500">jobs/sec</span>
+            </div>
+          </div>
+          <div
+            id="ws-status-badge"
+            class="flex items-center px-3 py-1 rounded border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-mono tracking-widest uppercase"
+          >
+            <div
+              id="ws-status-dot"
+              class="w-2 h-2 rounded-full bg-red-500 mr-2 animate-pulse"
+            ></div>
+            <span id="ws-status-text">DISCONNECTED</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content Split: Chart (Top) & Nodes (Bottom) -->
+      <main class="flex-grow flex flex-col gap-6 overflow-hidden">
+        <!-- Telemetry Graph Section -->
+        <div
+          class="h-64 tech-border bg-slate-900/50 rounded-lg p-4 flex flex-col relative"
+        >
+          <div
+            class="absolute top-4 right-4 flex gap-4 text-[10px] font-mono text-slate-400"
+          >
+            <div class="flex items-center">
+              <span class="w-2 h-2 bg-cyan-500 inline-block mr-1"></span> Total
+              Factory Load
+            </div>
+            <div class="flex items-center">
+              <span class="w-2 h-2 bg-red-500 inline-block mr-1"></span> Active
+              Faults
+            </div>
+          </div>
+          <h3 class="text-xs tracking-widest text-slate-500 uppercase mb-2">
+            Live Network Telemetry
+          </h3>
+          <div class="flex-grow relative w-full h-full">
+            <canvas id="telemetryChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div
+          id="loading-screen"
+          class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm"
+        >
+          <div
+            class="w-16 h-16 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin mb-4"
+          ></div>
+          <p
+            class="text-cyan-500 font-mono tracking-widest text-sm animate-pulse"
+          >
+            AWAITING TELEMETRY STREAM...
+          </p>
+        </div>
+
+        <!-- Machine Nodes Grid -->
+        <div
+          id="factory-grid"
+          class="grid grid-cols-2 lg:grid-cols-4 gap-4 flex-grow overflow-y-auto hidden pb-4"
+        >
+          <!-- Javascript will inject cards here -->
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // --- CHART.JS SETUP ---
+      const ctx = document.getElementById("telemetryChart").getContext("2d");
+      const maxDataPoints = 60;
+
+      const chartData = {
+        labels: Array(maxDataPoints).fill(""),
+        datasets: [
+          {
+            label: "Total Load",
+            data: Array(maxDataPoints).fill(0),
+            borderColor: "#0ea5e9", // cyan-500
+            backgroundColor: "rgba(14, 165, 233, 0.1)",
+            borderWidth: 1.5,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+          },
+          {
+            label: "Active Faults",
+            data: Array(maxDataPoints).fill(0),
+            borderColor: "#ef4444", // red-500
+            borderWidth: 1.5,
+            borderDash: [5, 5],
+            fill: false,
+            tension: 0.1,
+            pointRadius: 0,
+          },
+        ],
+      };
+
+      const telemetryChart = new Chart(ctx, {
+        type: "line",
+        data: chartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: {
+              display: true,
+              grid: { color: "rgba(255,255,255,0.05)" },
+              ticks: {
+                color: "#64748b",
+                font: { family: "monospace", size: 10 },
+              },
+              beginAtZero: true,
+            },
+          },
+        },
+      });
+
+      // --- DASHBOARD LOGIC ---
+      const actionMap = {
+        "-1": { text: "AWAITING", class: "text-slate-500" },
+        0: { text: "PROCESSING", class: "text-emerald-400" },
+        1: { text: "IDLE", class: "text-amber-400" },
+        2: { text: "ROUTE \u2190", class: "text-cyan-400" },
+        3: { text: "ROUTE \u2192", class: "text-purple-400" },
+      };
+
+      let totalJobsProcessed = 0;
+      let lastStep = 0;
+
+      function createMachineCardHTML(data) {
+        const isFaulted = data.is_faulted;
+        const action = actionMap[data.last_action] || actionMap["-1"];
+
+        // Calculate a pseudo-throughput to show active work
+        if (data.last_action === 0 && !isFaulted && data.queue > 0)
+          totalJobsProcessed += 0.5;
+
+        const boxClass = isFaulted
+          ? "fault-border bg-red-950/20"
+          : "tech-border bg-slate-900/40";
+        const statusIndicator = isFaulted
+          ? `<div class="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_#ef4444]"></div>`
+          : `<div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></div>`;
+
+        // Queue visualizer (dots)
+        let queueVisual = "";
+        for (let i = 0; i < 8; i++) {
+          queueVisual += `<div class="w-2 h-3 ${i < data.queue ? "bg-amber-500" : "bg-slate-800"} rounded-sm"></div>`;
+        }
+
+        return `
+                <div class="p-4 rounded-lg flex flex-col justify-between ${boxClass}">
+                    <!-- Top Row -->
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center gap-2">
+                            ${statusIndicator}
+                            <h2 class="text-sm font-mono tracking-widest text-slate-300 uppercase">${data.id}</h2>
+                        </div>
+                        <div class="text-[10px] font-mono tracking-wider ${action.class}">${action.text}</div>
+                    </div>
+
+                    <!-- Middle: Telemetry Data -->
+                    <div class="space-y-3 mb-4">
+                        <!-- CPU -->
+                        <div>
+                            <div class="flex justify-between text-[10px] font-mono text-slate-500 mb-1">
+                                <span>CPU_LOAD</span>
+                                <span class="${data.cpu_load > 80 ? "text-amber-400" : "text-cyan-400"}">${data.cpu_load.toFixed(1)}%</span>
+                            </div>
+                            <div class="h-1 w-full bg-slate-800 overflow-hidden">
+                                <div class="h-full ${data.cpu_load > 80 ? "bg-amber-500" : "bg-cyan-500"} transition-all duration-300" style="width: ${data.cpu_load}%"></div>
+                            </div>
+                        </div>
+                        <!-- TEMP -->
+                        <div>
+                            <div class="flex justify-between text-[10px] font-mono text-slate-500 mb-1">
+                                <span>THERMAL</span>
+                                <span class="${data.temperature > 85 ? "text-red-400" : "text-slate-300"}">${data.temperature.toFixed(1)}°C</span>
+                            </div>
+                            <div class="h-1 w-full bg-slate-800 overflow-hidden">
+                                <div class="h-full ${data.temperature > 85 ? "bg-red-500" : "bg-slate-500"} transition-all duration-300" style="width: ${data.temperature}%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom: Queue -->
+                    <div class="pt-3 border-t border-slate-800/50">
+                        <div class="flex justify-between items-center text-[10px] font-mono text-slate-500 mb-2">
+                            <span>BUFFER_Q</span>
+                            <span class="text-amber-500">${data.queue} UNITS</span>
+                        </div>
+                        <div class="flex gap-1">
+                            ${queueVisual}
+                        </div>
+                    </div>
+                </div>
+            `;
+      }
+
+      function updateChart(machines) {
+        let totalQueue = 0;
+        let activeFaults = 0;
+
+        machines.forEach((m) => {
+          totalQueue += m.queue;
+          if (m.is_faulted) activeFaults += 1;
+        });
+
+        chartData.datasets[0].data.push(totalQueue);
+        chartData.datasets[0].data.shift();
+
+        // Multiply faults by 5 just to make them visible on the same scale
+        chartData.datasets[1].data.push(activeFaults * 5);
+        chartData.datasets[1].data.shift();
+
+        telemetryChart.update();
+      }
+
+      // --- WEBSOCKET CONNECTION ---
+      let ws;
+      function connect() {
+        ws = new WebSocket("ws://localhost:8765");
+
+        ws.onopen = () => {
+          document.getElementById("ws-status-badge").className =
+            "flex items-center px-3 py-1 rounded border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs font-mono tracking-widest uppercase";
+          document.getElementById("ws-status-dot").className =
+            "w-2 h-2 rounded-full bg-cyan-400 mr-2";
+          document.getElementById("ws-status-text").innerText = "LINK ACTIVE";
+          document.getElementById("loading-screen").classList.add("hidden");
+          document.getElementById("factory-grid").classList.remove("hidden");
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+
+          // Update Step
+          document.getElementById("step-counter").innerText = data.step
+            .toString()
+            .padStart(4, "0");
+
+          // Calculate throughput (Jobs / Step)
+          if (data.step > lastStep) {
+            const tps = (totalJobsProcessed / data.step).toFixed(2);
+            document.getElementById("throughput-counter").innerText = tps;
+            lastStep = data.step;
+          }
+
+          // Render Grid
+          const grid = document.getElementById("factory-grid");
+          grid.innerHTML = data.machines.map(createMachineCardHTML).join("");
+
+          // Update Telemetry Chart
+          updateChart(data.machines);
+        };
+
+        ws.onclose = () => {
+          document.getElementById("ws-status-badge").className =
+            "flex items-center px-3 py-1 rounded border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-mono tracking-widest uppercase";
+          document.getElementById("ws-status-dot").className =
+            "w-2 h-2 rounded-full bg-red-500 mr-2 animate-pulse";
+          document.getElementById("ws-status-text").innerText =
+            "CONNECTION LOST";
+          document.getElementById("factory-grid").classList.add("hidden");
+          document.getElementById("loading-screen").classList.remove("hidden");
+          setTimeout(connect, 3000);
+        };
+      }
+
+      connect();
+    </script>
+  </body>
+</html>

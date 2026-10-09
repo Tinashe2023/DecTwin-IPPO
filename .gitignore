@@ -1,0 +1,19 @@
+# secrets / local config
+.env
+*.env
+# experiment tracking & caches
+wandb/
+ray_results/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+# large / local-only data
+telemetry_matched.csv.gz
+*.log
+# manuscript files do not belong in the code repo
+*.docx
+*.pdf
+archive/
+node_modules/
