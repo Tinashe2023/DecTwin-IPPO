@@ -49,7 +49,7 @@ numpy==1.26.4
 packaging==26.0
 pandas==3.0.3
 pettingzoo==1.24.3
-pillow==12.2.0
+pillow==13.0.0
 platformdirs==4.10.0
 protobuf==7.35.1
 psycopg2-binary==2.9.12
